@@ -31,7 +31,7 @@ const info = execFileSync("pdfinfo", [pdf], { encoding: "utf8" });
 const subject = /Subject:\s*(.*)/.exec(info)?.[1] || "";
 const pages = /Pages:\s*(\d+)/.exec(info)?.[1] || "";
 
-const { rules, tocKeys, rejected } = parseText(readFileSync(txt, "utf8"));
+const { rules, tocKeys, rejected, sections } = parseText(readFileSync(txt, "utf8"));
 const cov = coverage(rules, tocKeys);
 const report = [];
 const log = (m) => { console.log(m); report.push(m); };
@@ -65,6 +65,19 @@ if (process.env.DIAG !== "0") {
     txt2.forEach((l, i) => { if (l.includes(k.replace(/^(AMC|GM)\d+ /, "")) && hits.length < 3) hits.push(`L${i}: ${txt2.slice(i, i + 3).map((x) => x.trim().slice(0, 70)).join(" ⏎ ")}`); });
     log(`MISSING_CTX ${k} => ${hits.join(" ## ")}`);
   }
+}
+if (process.env.DIAG !== "0") {
+  log(`SECTIONS ${[...sections].map(([k, v]) => `${k.slice(0, 40)}[p${v.first}-${v.last} n=${v.n}]`).join(" | ")}`);
+  const lines2 = readFileSync(txt, "utf8").split("\n");
+  const art = [];
+  lines2.forEach((l, i) => { if (/^\s*Article \d+[a-z]?\b/.test(l) && art.length < 14) art.push(`L${i}: ${l.trim().slice(0, 50)} ⏎ ${(lines2[i + 1] || "").trim().slice(0, 50)} ⏎ ${(lines2[i + 2] || "").trim().slice(0, 50)}`); });
+  log(`ARTICLES ${art.join(" ## ")}`);
+  const dupKeys = []; const c = new Map();
+  for (const r of rules) c.set(r.key, (c.get(r.key) || 0) + 1);
+  for (const [k, n] of c) if (n > 1 && dupKeys.length < 3) dupKeys.push(k);
+  for (const k of dupKeys) log(`DUPTEXT ${k} => ${rules.filter((r) => r.key === k).map((r) => `p${r.page}-${r.endPage} len=${r.text.length} "${r.text.slice(0, 90).replace(/\s+/g, " ")}"`).join(" ## ")}`);
+  const big = [...rules].sort((a, b) => b.text.length - a.text.length).slice(0, 3);
+  log(`BIGSPAN ${big.map((r) => `${r.key} p${r.page}-${r.endPage}`).join(" | ")}`);
 }
 mkdirSync("data", { recursive: true });
 writeFileSync("data/rules.json", JSON.stringify({ revision: subject, pages: Number(pages), source: SRC, builtAt: new Date().toISOString(), rules }));
