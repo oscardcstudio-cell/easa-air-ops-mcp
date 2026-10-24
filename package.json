@@ -1,0 +1,8 @@
+{
+  "name": "easa-air-ops-mcp",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node probe.js" },
+  "engines": { "node": ">=22" }
+}
