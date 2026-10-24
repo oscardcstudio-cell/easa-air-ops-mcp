@@ -68,6 +68,10 @@ if (process.env.DIAG !== "0") {
 }
 if (process.env.DIAG !== "0") {
   log(`SECTIONS ${[...sections].map(([k, v]) => `${k.slice(0, 40)}[p${v.first}-${v.last} n=${v.n}]`).join(" | ")}`);
+  const pagesRaw = readFileSync(txt, "utf8").split("\f");
+  for (const n of (process.env.DUMP_PAGES || "172,173,189,190").split(",").map(Number)) {
+    log(`DUMP p${n} ${pagesRaw[n - 1].split("\n").filter((l) => l.trim()).slice(0, 32).map((l) => `${" ".repeat(0)}[${l.length - l.trimStart().length}]${l.trim().slice(0, 110)}`).join(" ⏎ ")}`);
+  }
   const lines2 = readFileSync(txt, "utf8").split("\n");
   const art = [];
   lines2.forEach((l, i) => { if (/^\s*Article \d+[a-z]?\b/.test(l) && art.length < 14) art.push(`L${i}: ${l.trim().slice(0, 50)} ⏎ ${(lines2[i + 1] || "").trim().slice(0, 50)} ⏎ ${(lines2[i + 2] || "").trim().slice(0, 50)}`); });

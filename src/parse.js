@@ -13,6 +13,10 @@ const DOTS_RE = /\.{6,}\s*\d+\s*$/;
 const TOC_TAIL_RE = /\.{4,}\s*\d+\s*$/;
 const TOC_RE = new RegExp(String.raw`^\s*(?:(AMC|GM)(\d+)?\s+)?(${ID})\s+\S.*?\.{4,}\s*\d+\s*$`);
 
+// Amendment lines are right-aligned paragraphs; running text that merely mentions a regulation is not.
+const MIN_AMEND_INDENT = 25;
+const SAME_LINE_AMEND_RE = /ED Decision \d{4}\/\d+\/[A-Z]+$/;
+const indentOf = (l) => l.length - l.trimStart().length;
 const squash = (s) => s.replace(/\s+/g, " ").trim();
 const normId = (s) => s.replace(/\s+/g, "");
 
@@ -85,7 +89,7 @@ export function parsePages(pages) {
         let title = head.rest;
         let amend = "";
         let end = -1;
-        const sameLine = AMEND_RE.exec(title);
+        const sameLine = SAME_LINE_AMEND_RE.exec(title);
         if (sameLine) {
           amend = squash(title.slice(sameLine.index));
           title = squash(title.slice(0, sameLine.index));
@@ -97,13 +101,13 @@ export function parsePages(pages) {
             if (!t) continue;
             seen++;
             if (seen === 1 && /^n\/a$/i.test(t)) { amend = ""; title = squash(`${title} ${lines.slice(i + 1, j).join(" ")}`); end = j - 1; break; }
-            if (AMEND_RE.test(t) && t.length < 160) {
+            if (AMEND_RE.test(t) && squash(t).length < 160 && indentOf(lines[j]) >= MIN_AMEND_INDENT) {
               amend = squash(t);
               title = squash(`${title} ${lines.slice(i + 1, j).join(" ")}`);
               end = j;
               break;
             }
-            if (t.length > 140 || parseHeading(squash(t))) break;
+            if (squash(t).length > 140 || parseHeading(squash(t))) break;
           }
         }
         if (end >= 0) {
