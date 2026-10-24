@@ -5,28 +5,21 @@ import { execSync } from "node:child_process";
 import { createServer } from "node:http";
 
 const URL_SRC = process.env.EASA_URL || "https://www.easa.europa.eu/en/downloads/20342/en";
-const out = "/tmp/easa.bin";
+const pdf = "/tmp/easa.pdf";
 let report = "probe running";
-
-const sh = (c) => { try { return execSync(c, { encoding: "utf8", maxBuffer: 1 << 24 }); } catch (e) { return "ERR " + e.message; } };
+const sh = (c) => { try { return execSync(c, { encoding: "utf8", maxBuffer: 1 << 28 }); } catch (e) { return "ERR " + e.message; } };
+const emit = (title, body) => { console.log(`##### ${title}\n${body}`); report += `\n##### ${title}\n${body}`; };
 
 async function run() {
-  const res = await fetch(URL_SRC, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0 easa-air-ops-mcp" } });
-  const lines = [`status ${res.status} final ${res.url}`];
-  for (const [k, v] of res.headers) lines.push(`H ${k}: ${v}`);
-  await pipeline(Readable.fromWeb(res.body), createWriteStream(out));
-  lines.push("size " + sh(`stat -c %s ${out}`).trim());
-  lines.push("file " + sh(`file ${out}`).trim());
-  lines.push("head " + sh(`head -c 600 ${out} | strings | head -12`));
-  const kind = sh(`file -b ${out}`);
-  if (/Zip/.test(kind)) lines.push("unzip\n" + sh(`unzip -l ${out} | head -60`));
-  if (/PDF/.test(kind)) lines.push("pdfinfo\n" + sh(`pdfinfo ${out}`));
-  if (/XML|text/i.test(kind)) {
-    lines.push("tags\n" + sh(`grep -o '<[a-zA-Z:_-]*' ${out} | sort | uniq -c | sort -rn | head -40`));
-    lines.push("first\n" + sh(`head -c 3000 ${out}`));
-  }
-  report = lines.join("\n");
-  console.log("=== PROBE REPORT ===\n" + report + "\n=== END ===");
+  const res = await fetch(URL_SRC, { headers: { "user-agent": "Mozilla/5.0 easa-air-ops-mcp" } });
+  await pipeline(Readable.fromWeb(res.body), createWriteStream(pdf));
+  sh(`pdftotext -layout ${pdf} /tmp/full.txt`);
+  emit("full.txt", sh("wc -lc /tmp/full.txt"));
+  for (const p of [120, 121, 1000]) emit(`page ${p}`, sh(`pdftotext -layout -f ${p} -l ${p} ${pdf} - | head -70`));
+  emit("heading-like counts", sh(`grep -cE '^ *(AMC|GM)[0-9]* [A-Z]{2,4}\\.' /tmp/full.txt; grep -cE '^ *[A-Z]{3}\\.[A-Z]{2,4}\\.[0-9]+' /tmp/full.txt`));
+  emit("heading samples", sh(`grep -nE '^ *(AMC|GM)[0-9]* [A-Z]{2,4}\\.|^ *[A-Z]{3}\\.[A-Z]{2,4}\\.[0-9]+ ' /tmp/full.txt | sed -n '1,10p;400,410p;1500,1510p'`));
+  emit("regulation/annex markers", sh(`grep -nE '^ *(ANNEX|Annex|SUBPART|Subpart|SECTION|Section|APPENDIX|Appendix) ' /tmp/full.txt | sed -n '1,40p'`));
+  emit("END", "done");
 }
-run().catch((e) => { report = "FAIL " + e.stack; console.log(report); });
+run().catch((e) => emit("FAIL", e.stack));
 createServer((_, r) => { r.setHeader("content-type", "text/plain"); r.end(report); }).listen(process.env.PORT || 3000);
