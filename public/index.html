@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EASA Air Ops</title>
+<style>
+  :root { --bg:#fff; --fg:#1a1d21; --muted:#5b6470; --line:#dde1e6; --accent:#0b5cad; --soft:#f3f5f8; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14171a; --fg:#e7eaee; --muted:#98a2af; --line:#2a2f36; --accent:#6db0ff; --soft:#1c2025; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; }
+  header { padding:16px; border-bottom:1px solid var(--line); }
+  h1 { margin:0; font-size:18px; }
+  .sub { color:var(--muted); font-size:13px; }
+  main { display:grid; grid-template-columns: minmax(280px, 420px) 1fr; min-height: calc(100vh - 70px); }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; } #reader { border-top:1px solid var(--line); } }
+  #side { border-right:1px solid var(--line); padding:16px; overflow:auto; }
+  form { display:flex; gap:8px; flex-wrap:wrap; }
+  input[type=search] { flex:1 1 100%; padding:10px; font-size:16px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); }
+  select, button { padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--soft); color:var(--fg); font-size:14px; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .hit { padding:10px 0; border-bottom:1px solid var(--line); cursor:pointer; }
+  .hit:hover b { text-decoration:underline; }
+  .hit b { color:var(--accent); }
+  .meta { color:var(--muted); font-size:12px; }
+  .snip { font-size:13px; margin-top:2px; }
+  #reader { padding:16px 24px; overflow:auto; }
+  #reader pre { white-space:pre-wrap; font:14px/1.55 ui-monospace, Menlo, monospace; }
+  .chips a { display:inline-block; margin:2px 4px 2px 0; padding:2px 8px; border:1px solid var(--line); border-radius:12px; font-size:12px; color:var(--accent); cursor:pointer; text-decoration:none; }
+  details { margin-top:16px; font-size:13px; }
+  code { background:var(--soft); padding:2px 6px; border-radius:4px; word-break:break-all; }
+  .empty { color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>EASA Easy Access Rules — Air Operations</h1>
+  <div class="sub" id="meta"></div>
+</header>
+<main>
+  <section id="side">
+    <form id="f">
+      <input type="search" id="q" placeholder="Question ou mots-clés, ex. fuel policy, CAT.OP.MPA.150" autofocus>
+      <select id="type"><option value="">Tous types</option><option>IR</option><option>AMC</option><option>GM</option></select>
+      <select id="annex"><option value="">Toutes parties</option><option>Part-ARO</option><option>Part-ORO</option><option>Part-CAT</option><option>Part-SPA</option><option>Part-NCC</option><option>Part-NCO</option><option>Part-SPO</option></select>
+      <button class="primary">Rechercher</button>
+    </form>
+    <div id="hits"></div>
+    <details>
+      <summary>Utiliser dans Claude (MCP)</summary>
+      <p>URL du serveur MCP :</p>
+      <p><code id="mcp"></code> <button id="copy" type="button">Copier</button></p>
+      <p class="meta">Claude → Réglages → Connecteurs → Ajouter un connecteur personnalisé. Outils : <code>search_rules</code>, <code>get_rule</code>, <code>list_structure</code>.</p>
+    </details>
+  </section>
+  <section id="reader"><p class="empty">Choisis une règle dans les résultats pour lire son texte complet.</p></section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+$("mcp").textContent = location.origin + "/mcp";
+$("copy").onclick = () => navigator.clipboard.writeText($("mcp").textContent);
+fetch("/api/meta").then((r) => r.json()).then((m) => { $("meta").textContent = `${m.revision} · ${m.rules} règles · ${m.pages} pages`; });
+
+async function search(e) {
+  e && e.preventDefault();
+  const q = $("q").value.trim();
+  if (!q) return;
+  const p = new URLSearchParams({ q, type: $("type").value, annex: $("annex").value });
+  const { hits } = await (await fetch("/api/search?" + p)).json();
+  $("hits").innerHTML = hits.length ? hits.map((h) => `<div class="hit" data-id="${esc(h.key)}"><b>${esc(h.key)}</b> — ${esc(h.title)}<div class="meta">${esc(h.annex)}${h.subpart ? " / " + esc(h.subpart) : ""} · p.${h.page}</div><div class="snip">${esc(h.snippet)}</div></div>`).join("") : '<p class="empty">Aucun résultat.</p>';
+}
+$("f").onsubmit = search;
+$("hits").onclick = (e) => { const h = e.target.closest(".hit"); if (h) openRule(h.dataset.id); };
+
+async function openRule(id, related) {
+  const r = await fetch("/api/rule?id=" + encodeURIComponent(id) + (related ? "&related=1" : ""));
+  const d = await r.json();
+  if (d.error) { $("reader").innerHTML = `<p class="empty">${esc(d.error)}</p>`; return; }
+  const chips = d.related.length ? `<div class="chips">Liés : ${d.related.map((x) => `<a data-id="${esc(x.key)}">${esc(x.key)}</a>`).join("")}</div><p><button id="all">Afficher aussi les AMC/GM liés</button></p>` : "";
+  $("reader").innerHTML = chips + `<pre>${esc(d.text)}</pre>`;
+  $("reader").scrollTop = 0;
+  $("reader").querySelectorAll(".chips a").forEach((a) => a.onclick = () => openRule(a.dataset.id));
+  const all = $("all"); if (all) all.onclick = () => openRule(id, true);
+}
+</script>
+</body>
+</html>
