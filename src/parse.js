@@ -7,11 +7,13 @@ const SUBHEAD_RE = /^\s*(SUBPART|SECTION|APPENDIX|CHAPTER|TITLE)\b/i;
 
 const ID = String.raw`[A-Z]{2,5}(?:\.[A-Z0-9]{1,6})+(?:\s?\([A-Za-z0-9]+\))*(?:\s?;\s?(?:\([A-Za-z0-9]+\))+)*`;
 const HEAD_RE = new RegExp(String.raw`^(?:(AMC|GM)(\d+)?\s+)?(${ID})[,;]?(?:\s+(\S.*))?$`);
-const ANNEX_GM_RE = /^(AMC|GM)(\d+)?\s+(Annex [IVX]+)(?:\s+(\S.*))?$/;
+const ANNEX_GM_RE = /^(AMC|GM)(\d+)?\s+(Annex [IVX]+|Article [\d.]+[a-z]*(?:\([A-Za-z0-9]+\))*(?:;\s?(?:\([A-Za-z0-9]+\))+)*)(?:\s+(\S.*))?$/;
+const ARTICLE_RE = /^Article\s+(\d+[a-z]*)\s+[-–—]\s+(\S.*)$/;
+const ANNEX_HEAD_RE = /^(Annex [IVX]+)\s+[—–-]\s+(\S.*)$/;
+const DEF_START_RE = /^\((\d+[a-z]*)\)\s+(\S.*)$/;
 const AMEND_RE = /(ED Decision \d{4}\/\d+\/[A-Z]+|Regulation \(EU\)|Implementing Regulation|Delegated Regulation)/;
 const DOTS_RE = /\.{6,}\s*\d+\s*$/;
 const TOC_TAIL_RE = /\.{4,}\s*\d+\s*$/;
-const TOC_RE = new RegExp(String.raw`^\s*(?:(AMC|GM)(\d+)?\s+)?(${ID})\s+\S.*?\.{4,}\s*\d+\s*$`);
 
 // Amendment lines are right-aligned paragraphs; running text that merely mentions a regulation is not.
 const MIN_AMEND_INDENT = 25;
@@ -31,12 +33,36 @@ function parseHeading(trimmed) {
     const id = normId(m[3]);
     return { type: m[1] || "IR", num: m[2] || "", id, base: id.replace(/[(;].*$/, ""), rest: m[4] || "", key: makeKey(m[1], m[2], id) };
   }
+  m = ARTICLE_RE.exec(trimmed);
+  if (m) {
+    const id = `Article ${m[1]}`;
+    return { type: "ART", num: "", id, base: id, rest: m[2], key: id };
+  }
+  m = ANNEX_HEAD_RE.exec(trimmed);
+  if (m) return { type: "ANNEX", num: "", id: m[1], base: m[1], rest: m[2], key: m[1] };
   m = ANNEX_GM_RE.exec(trimmed);
   if (m) {
-    const id = m[3];
+    const id = m[3].replace(/;\s+/g, ";");
     return { type: m[1], num: m[2] || "", id, base: id, rest: m[4] || "", key: makeKey(m[1], m[2], id) };
   }
   return null;
+}
+
+// Annex I is a numbered list of definitions: one record per definition so each can be fetched on its own.
+function splitDefinitions(rec) {
+  const out = [{ ...rec, lines: [], pgs: [] }];
+  rec.lines.forEach((l, i) => {
+    const m = DEF_START_RE.exec(l);
+    if (m) {
+      const term = /‘([^’]{1,100})’/.exec(m[2]);
+      out.push({ ...rec, key: `Annex I (${m[1]})`, type: "DEF", id: `Annex I (${m[1]})`, base: "Annex I", title: term ? term[1] : squash(m[2]).slice(0, 70), page: rec.pgs[i], endPage: rec.pgs[i], lines: [], pgs: [] });
+    }
+    const target = out[out.length - 1];
+    target.lines.push(l);
+    target.pgs.push(rec.pgs[i]);
+    target.endPage = rec.pgs[i];
+  });
+  return out.filter((r) => r.type === "DEF" ? !/^\(\d+[a-z]*\)\s+\[deleted/i.test(r.lines[0]) : true);
 }
 
 export function parsePages(pages) {
@@ -48,11 +74,16 @@ export function parsePages(pages) {
   let annex = "";
   let subpart = "";
 
+  const finish = (rec) => {
+    rec.text = rec.lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    delete rec.lines;
+    delete rec.pgs;
+    rules.push(rec);
+  };
   const flush = () => {
     if (!current) return;
-    current.text = current.lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
-    delete current.lines;
-    rules.push(current);
+    if (current.key === "Annex I") splitDefinitions(current).forEach(finish);
+    else finish(current);
     current = null;
   };
 
@@ -62,8 +93,10 @@ export function parsePages(pages) {
     raw.forEach((l, k) => {
       let line = l;
       if (!TOC_TAIL_RE.test(line) && raw[k + 1] && TOC_TAIL_RE.test(raw[k + 1]) && !parseHeading(squash(raw[k + 1]))) line = `${l} ${raw[k + 1].trim()}`;
-      const t = TOC_RE.exec(line);
-      if (t) tocKeys.add(makeKey(t[1], t[2], normId(t[3])));
+      if (TOC_TAIL_RE.test(line)) {
+        const head = parseHeading(squash(line.replace(TOC_TAIL_RE, "")));
+        if (head) tocKeys.add(head.key);
+      }
     });
     const firstIdx = raw.findIndex((l) => l.trim());
     const hm = firstIdx >= 0 ? HEADER_RE.exec(raw[firstIdx]) : null;
@@ -112,13 +145,13 @@ export function parsePages(pages) {
         }
         if (end >= 0) {
           flush();
-          current = { key: head.key, type: head.type, num: head.num, id: head.id, base: head.base, title, annex, subpart, page: pageNo, endPage: pageNo, amendment: amend, lines: [] };
+          current = { key: head.key, type: head.type, num: head.num, id: head.id, base: head.base, title, annex, subpart, page: pageNo, endPage: pageNo, amendment: amend, lines: [], pgs: [] };
           i = end;
           continue;
         }
         if (rejected.length < 40) rejected.push(`p${pageNo}: ${trimmed.slice(0, 100)}`);
       }
-      if (current) { current.lines.push(lines[i]); current.endPage = pageNo; }
+      if (current) { current.lines.push(lines[i]); current.pgs.push(pageNo); current.endPage = pageNo; }
     }
   });
   flush();

@@ -32,12 +32,12 @@ export function registerTools(server, index, meta) {
     "search_rules",
     {
       title: "Search rules",
-      description: `Full-text search in the EASA Easy Access Rules for Air Operations (${meta.revision}). Returns the best matching rules (IR = Implementing Rule, AMC = Acceptable Means of Compliance, GM = Guidance Material) with a snippet. Use get_rule with a returned key to read the full text.`,
+      description: `Full-text search in the EASA Easy Access Rules for Air Operations (${meta.revision}). Returns the best matching rules (IR = Implementing Rule, AMC = Acceptable Means of Compliance, GM = Guidance Material, ART = Article of the cover regulation, DEF = Annex I definition) with a snippet. Use get_rule with a returned key to read the full text.`,
       inputSchema: {
         query: z.string().describe("Keywords or a question, e.g. 'fuel policy helicopter' or 'CAT.OP.MPA.150'"),
         limit: z.number().int().min(1).max(25).default(8).optional(),
         annex: z.string().optional().describe("Filter on annex/part, e.g. 'Part-CAT', 'Part-ORO'"),
-        type: z.enum(["IR", "AMC", "GM"]).optional(),
+        type: z.enum(["IR", "AMC", "GM", "ART", "DEF", "ANNEX"]).optional(),
       },
     },
     async ({ query, limit, annex, type }) => {

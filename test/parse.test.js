@@ -66,3 +66,18 @@ test("running text that mentions a regulation does not make a heading", () => {
   const page = [hdr("ANNEX II (Part-ARO)"), "ORO.GEN.200A is applicable as described in Regulation (EU) No 965/2012", "and the competent authority shall check it.", "More text."].join("\n");
   assert.equal(parsePages([page]).rules.length, 0);
 });
+
+test("cover-regulation articles and their GM are rules", () => {
+  const page = [hdr("Cover regulation"), "Article 1 - Subject matter and scope", " ".repeat(87) + "Regulation (EU) 2025/133", "1.    This Regulation lays down rules.", "GM1 Article 2(1)(d) Definitions", " ".repeat(87) + "ED Decision 2016/004/R", "Guidance."].join("\n");
+  const { rules } = parsePages([page]);
+  assert.deepEqual(rules.map((r) => [r.key, r.type, r.title]), [["Article 1", "ART", "Subject matter and scope"], ["GM1 Article 2(1)(d)", "GM", "Definitions"]]);
+});
+
+test("Annex I is split into one record per definition", () => {
+  const page = [hdr("ANNEX I – Definitions"), "Annex I — Definitions for terms used in Annexes II to IX", " ".repeat(88) + "Regulation (EU) 2025/133", "For the purpose of this Regulation, the following definitions shall apply:", "(1)    ‘accelerate-stop distance available (ASDA)’ means the length of the take-off run", "       available plus stopway;", "(2)    ‘acceptable means of compliance (AMC)’ means non-binding standards;", "(3)    [deleted with Reg. (EU) 2021/2237]", "(4)    ‘adequate aerodrome’ means an aerodrome:", "       (a)   with a runway;"].join("\n");
+  const { rules } = parsePages([page]);
+  assert.deepEqual(rules.map((r) => r.key), ["Annex I", "Annex I (1)", "Annex I (2)", "Annex I (4)"]);
+  assert.equal(rules[1].title, "accelerate-stop distance available (ASDA)");
+  assert.match(rules[1].text, /available plus stopway/);
+  assert.match(rules[3].text, /with a runway/);
+});
