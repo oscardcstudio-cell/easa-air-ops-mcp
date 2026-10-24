@@ -60,7 +60,7 @@ function splitDefinitions(rec) {
       let id = `Annex I (${m[1]})`;
       for (let n = 2; used.has(id); n++) id = `Annex I (${m[1]}) [${n}]`;
       used.add(id);
-      out.push({ ...rec, key: id, type: "DEF", id, base: "Annex I", title: term ? term[1] : squash(m[2]).slice(0, 70), page: rec.pgs[i], endPage: rec.pgs[i], lines: [], pgs: [] });
+      out.push({ ...rec, key: id, type: "DEF", id, base: id, title: term ? term[1] : squash(m[2]).slice(0, 70), page: rec.pgs[i], endPage: rec.pgs[i], lines: [], pgs: [] });
     }
     const target = out[out.length - 1];
     target.lines.push(l);
