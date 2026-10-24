@@ -51,11 +51,16 @@ function parseHeading(trimmed) {
 // Annex I is a numbered list of definitions: one record per definition so each can be fetched on its own.
 function splitDefinitions(rec) {
   const out = [{ ...rec, lines: [], pgs: [] }];
+  const used = new Set();
   rec.lines.forEach((l, i) => {
     const m = DEF_START_RE.exec(l);
     if (m) {
       const term = /‘([^’]{1,100})’/.exec(m[2]);
-      out.push({ ...rec, key: `Annex I (${m[1]})`, type: "DEF", id: `Annex I (${m[1]})`, base: "Annex I", title: term ? term[1] : squash(m[2]).slice(0, 70), page: rec.pgs[i], endPage: rec.pgs[i], lines: [], pgs: [] });
+      // EASA numbers two definitions "(130)" and "(131)"; keep both addressable.
+      let id = `Annex I (${m[1]})`;
+      for (let n = 2; used.has(id); n++) id = `Annex I (${m[1]}) [${n}]`;
+      used.add(id);
+      out.push({ ...rec, key: id, type: "DEF", id, base: "Annex I", title: term ? term[1] : squash(m[2]).slice(0, 70), page: rec.pgs[i], endPage: rec.pgs[i], lines: [], pgs: [] });
     }
     const target = out[out.length - 1];
     target.lines.push(l);

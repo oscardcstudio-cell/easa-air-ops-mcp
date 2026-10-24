@@ -83,6 +83,8 @@ if (process.env.DIAG !== "0") {
   const apx = [];
   lines2.forEach((l, i) => { if (/^\s{0,3}Appendix \d+[A-Za-z]?\b/.test(l) && !/\.{5,}/.test(l) && apx.length < 10) apx.push(`L${i}[${l.length - l.trimStart().length}]: ${l.trim().slice(0, 60)} ⏎ ${(lines2[i + 1] || "").trim().slice(0, 50)} ⏎ ${(lines2[i + 2] || "").trim().slice(0, 50)}`); });
   log(`APPENDIX ${apx.join(" ## ")}`);
+  const a140 = lines2.findIndex((l) => !/\.{5,}/.test(l) && /AMC1 SPO\.IDE\.A\.140/.test(l) && l.length - l.trimStart().length < 3);
+  log(`SPO140 line=${a140} before=${lines2.slice(Math.max(0, a140 - 8), a140 + 4).map((x) => `[${x.length - x.trimStart().length}]${x.trim().slice(0, 70)}`).join(" ⏎ ")}`);
   const big = [...rules].sort((a, b) => b.text.length - a.text.length).slice(0, 3);
   log(`BIGSPAN ${big.map((r) => `${r.key} p${r.page}-${r.endPage}`).join(" | ")}`);
 }

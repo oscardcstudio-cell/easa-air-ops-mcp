@@ -50,5 +50,16 @@ app.post("/mcp", async (req, res) => {
 });
 app.all("/mcp", (_, res) => res.status(405).json({ jsonrpc: "2.0", error: { code: -32000, message: "Method not allowed." }, id: null }));
 
+if (process.env.SELFTEST !== "0") {
+  for (const q of ["fuel policy helicopter", "CAT.OP.MPA.150", "definition of alternate aerodrome", "cabin crew minimum number passengers", "Article 7 air operator certificates"]) {
+    const hits = index.search(q, { limit: 3 });
+    console.log(`SELFTEST search "${q}" => ${hits.map((h) => `${h.rule.key} (${h.score})`).join(" | ")}`);
+  }
+  for (const id of ["CAT.OP.MPA.150", "Article 7", "Annex I (6)"]) {
+    const r = getRule(index, id, { maxChars: 260 });
+    console.log(`SELFTEST get "${id}" => ${r.error || `${r.matches} match, related=${r.related.length}: ${r.text.replace(/\s+/g, " ").slice(0, 240)}`}`);
+  }
+}
+
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`listening on ${port} — ${meta.rules} rules, ${meta.revision}`));
